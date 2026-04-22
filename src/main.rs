@@ -29,6 +29,7 @@ fn main() {
 #[derive(Debug)]
 struct Database {
     entries: std::collections::HashMap<String, String>,
+    did_flush: bool,
 }
 
 impl Database {
@@ -45,7 +46,10 @@ impl Database {
             let (key, value) = line.split_once(',').expect("failed to parse db file");
             entries.insert(key.to_owned(), value.to_owned());
         }
-        return Ok(Database { entries });
+        return Ok(Database {
+            entries,
+            did_flush: false,
+        });
     }
 
     fn insert(&mut self, key: String, value: String) {
@@ -65,12 +69,25 @@ impl Database {
         }
     }
 
-    fn save(self) {
-        let mut file_contents = String::new();
-        for (key, value) in self.entries {
-            let line = format!("{},{}", key, value);
-            file_contents.push_str(&line);
-        }
-        std::fs::write("kv.db", file_contents).expect("failed to save contents to db");
+    fn save(mut self) {
+        self.did_flush = true;
+        let _ = flush(&self);
     }
+}
+
+impl Drop for Database {
+    fn drop(&mut self) {
+        if self.did_flush == false {
+            let _ = flush(self);
+        }
+    }
+}
+
+fn flush(database: &Database) -> std::io::Result<()> {
+    let mut file_contents = String::new();
+    for (key, value) in &database.entries {
+        let line = format!("{},{}\n", key, value);
+        file_contents.push_str(&line);
+    }
+    std::fs::write("kv.db", file_contents)
 }
