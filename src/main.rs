@@ -17,7 +17,7 @@ fn main() {
             .expect("failed to provide value for set command");
         database.insert(key, value);
         database.save();
-        database.insert("hello".to_owned(), "world".to_owned());
+        // database.insert("hello".to_owned(), "world".to_owned());
     } else if command == "get" {
         key = args.next().expect("failed to provide key");
         database.get(key);
@@ -65,11 +65,12 @@ impl Database {
         }
     }
 
-    fn save(&self) {
-        let mut file_contents = String::from("");
-        for (key, value) in &self.entries {
-            file_contents += &format!("{},{}\n", key, value);
+    fn save(self) {
+        let mut file_contents = String::new();
+        for (key, value) in self.entries {
+            let line = format!("{},{}", key, value);
+            file_contents.push_str(&line);
         }
-        std::fs::write("kv.db", file_contents).expect("failed to save contents to dv");
+        std::fs::write("kv.db", file_contents).expect("failed to save contents to db");
     }
 }
