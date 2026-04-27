@@ -1,93 +1,86 @@
 fn main() {
     let mut args = std::env::args().skip(1);
-    let command = args.next().expect("failed to provide command");
+    let command = args.next().expect("please enter a command");
+    let mut database = Database::new().expect("failed to initialize database");
 
-    if command != "get" && command != "set" && command != "get_all" {
-        panic!("invalid command");
+    if command == "get_all" {
+        for (key, value) in &database.values {
+            println!("{},{}", key, value);
+        }
+        return;
     }
 
-    let mut database = Database::new().expect("failed to init database");
-    let key;
-    let value;
+    let key = args.next().expect("missing key");
 
     if command == "set" {
-        key = args.next().expect("failed to provide key");
-        value = args
-            .next()
-            .expect("failed to provide value for set command");
-        database.insert(key, value);
+        let value = args.next().expect("missing value");
+        database.insert(key.to_owned(), value.to_owned());
         database.save();
-        // database.insert("hello".to_owned(), "world".to_owned());
-    } else if command == "get" {
-        key = args.next().expect("failed to provide key");
-        database.get(key);
-    } else if command == "get_all" {
-        database.get_all();
+        println!("wrote ({},{})", key, value);
+        return;
     }
+
+    if command == "get" {
+        match database.get(key.to_owned()) {
+            Some(value) => println!("{}", value),
+            None => println!("'{}' does not exist", key),
+        }
+        return;
+    }
+
+    panic!("Invalid command '{}'", command);
 }
 
-#[derive(Debug)]
 struct Database {
-    entries: std::collections::HashMap<String, String>,
+    values: std::collections::HashMap<String, String>,
     did_flush: bool,
 }
 
 impl Database {
     fn new() -> Result<Database, std::io::Error> {
-        let mut entries: std::collections::HashMap<String, String> =
+        let mut values: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
-
-        if std::path::Path::new("kv.db").is_file() == false {
-            std::fs::File::create_new("kv.db").expect("failed to create db file");
-        }
-
         let file_contents = std::fs::read_to_string("kv.db")?;
         for line in file_contents.lines() {
-            let (key, value) = line.split_once(',').expect("failed to parse db file");
-            entries.insert(key.to_owned(), value.to_owned());
+            let (key, value) = line.split_once(',').expect("failed to parse db");
+            values.insert(key.to_owned(), value.to_owned());
         }
-        return Ok(Database {
-            entries,
+
+        return Result::Ok(Database {
+            values,
             did_flush: false,
         });
     }
 
+    fn get(&self, key: String) -> Option<&String> {
+        return self.values.get(&key);
+    }
+
     fn insert(&mut self, key: String, value: String) {
-        self.entries.insert(key, value);
+        self.values.insert(key, value);
     }
 
-    fn get(&self, key: String) {
-        match self.entries.get(&key) {
-            Some(value) => println!("{}", value),
-            None => println!("no value for '{}'", key),
+    fn save(&mut self) {
+        if self.did_flush {
+            panic!("cannot save flushed database");
         }
-    }
 
-    fn get_all(&self) {
-        for (key, value) in &self.entries {
-            println!("{},{}", key, value);
-        }
-    }
-
-    fn save(mut self) {
+        flush(self);
         self.did_flush = true;
-        let _ = flush(&self);
     }
 }
 
 impl Drop for Database {
     fn drop(&mut self) {
-        if self.did_flush == false {
-            let _ = flush(self);
-        }
+        flush(self);
     }
 }
 
-fn flush(database: &Database) -> std::io::Result<()> {
+fn flush(database: &mut Database) {
     let mut file_contents = String::new();
-    for (key, value) in &database.entries {
+    for (key, value) in &database.values {
         let line = format!("{},{}\n", key, value);
         file_contents.push_str(&line);
     }
-    std::fs::write("kv.db", file_contents)
+    std::fs::write("kv.db", file_contents).expect("failed to write contents to database")
 }
